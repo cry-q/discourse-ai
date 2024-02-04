@@ -72,7 +72,7 @@ module DiscourseAi
           Net::HTTP.start(
             model_uri.host,
             model_uri.port,
-            use_ssl: true,
+            use_ssl: false,
             read_timeout: TIMEOUT,
             open_timeout: TIMEOUT,
             write_timeout: TIMEOUT,

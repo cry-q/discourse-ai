@@ -38,10 +38,16 @@ module DiscourseAi
         llm = DiscourseAi::Completions::Llm.proxy(SiteSetting.ai_helper_model)
         prompt = completion_prompt.messages_with_input(input)
 
+        if completion_prompt.temperature == nil
+          temperature = 0.1
+        else
+          temperature = (completion_prompt.temperature + 0.1) / 1.1
+        end
+
         llm.generate(
           prompt,
           user: user,
-          temperature: completion_prompt.temperature,
+          temperature: temperature,
           stop_sequences: completion_prompt.stop_sequences,
           &block
         )
