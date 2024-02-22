@@ -3,35 +3,41 @@
 module DiscourseAi
   module AiHelper
     class Assistant
-      def available_prompts(name_filter: nil)
-        cp = CompletionPrompt
-        prompts = []
+      AI_HELPER_PROMPTS_CACHE_KEY = "ai_helper_prompts"
 
-        if name_filter
-          prompts = [cp.enabled_by_name(name_filter)]
-        else
-          prompts = cp.where(enabled: true)
-          # Hide illustrate_post if disabled
-          prompts =
-            prompts.where.not(
-              name: "illustrate_post",
-            ) if SiteSetting.ai_helper_illustrate_post_model == "disabled"
-        end
+      def self.clear_prompt_cache!
+        Discourse.cache.delete(AI_HELPER_PROMPTS_CACHE_KEY)
+      end
 
-        prompts.map do |prompt|
-          translation =
-            I18n.t("discourse_ai.ai_helper.prompts.#{prompt.name}", default: nil) ||
-              prompt.translated_name || prompt.name
+      def available_prompts
+        Discourse
+          .cache
+          .fetch(AI_HELPER_PROMPTS_CACHE_KEY, expires_in: 30.minutes) do
+            prompts = CompletionPrompt.where(enabled: true)
 
-          {
-            id: prompt.id,
-            name: prompt.name,
-            translated_name: translation,
-            prompt_type: prompt.prompt_type,
-            icon: icon_map(prompt.name),
-            location: location_map(prompt.name),
-          }
-        end
+            # Hide illustrate_post if disabled
+            prompts =
+              prompts.where.not(
+                name: "illustrate_post",
+              ) if SiteSetting.ai_helper_illustrate_post_model == "disabled"
+
+            prompts =
+              prompts.map do |prompt|
+                translation =
+                  I18n.t("discourse_ai.ai_helper.prompts.#{prompt.name}", default: nil) ||
+                    prompt.translated_name || prompt.name
+
+                {
+                  id: prompt.id,
+                  name: prompt.name,
+                  translated_name: translation,
+                  prompt_type: prompt.prompt_type,
+                  icon: icon_map(prompt.name),
+                  location: location_map(prompt.name),
+                }
+              end
+            prompts
+          end
       end
 
       def generate_prompt(completion_prompt, input, user, &block)
@@ -88,6 +94,42 @@ module DiscourseAi
         sanitized_result = sanitize_result(streamed_result)
         if sanitized_result.present?
           publish_update(channel, { result: sanitized_result, done: true }, user)
+        end
+      end
+
+      def generate_image_caption(image_url, user)
+        if SiteSetting.ai_helper_image_caption_model == "llava"
+          parameters = {
+            input: {
+              image: image_url,
+              top_p: 1,
+              max_tokens: 1024,
+              temperature: 0.2,
+              prompt: "Please describe this image in a single sentence",
+            },
+          }
+
+          ::DiscourseAi::Inference::Llava.perform!(parameters).dig(:output).join
+        else
+          prompt =
+            DiscourseAi::Completions::Prompt.new(
+              messages: [
+                {
+                  type: :user,
+                  content: [
+                    { type: "text", text: "Describe this image in a single sentence" },
+                    { type: "image_url", image_url: image_url },
+                  ],
+                },
+              ],
+              skip_validations: true,
+            )
+
+          DiscourseAi::Completions::Llm.proxy(SiteSetting.ai_helper_image_caption_model).generate(
+            prompt,
+            user: Discourse.system_user,
+            max_tokens: 1024,
+          )
         end
       end
 

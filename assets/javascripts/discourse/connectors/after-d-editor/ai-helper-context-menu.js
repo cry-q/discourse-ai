@@ -19,7 +19,6 @@ export default class AiHelperContextMenu extends Component {
   @service siteSettings;
   @service modal;
   @service capabilities;
-  @tracked helperOptions = [];
   @tracked showContextMenu = false;
   @tracked caretCoords;
   @tracked virtualElement;
@@ -56,15 +55,6 @@ export default class AiHelperContextMenu extends Component {
   @tracked _contextMenu;
   @tracked _activeAIRequest = null;
 
-  constructor() {
-    super(...arguments);
-
-    // Fetch prompts only if it hasn't been fetched yet
-    if (this.helperOptions.length === 0) {
-      this.loadPrompts();
-    }
-  }
-
   willDestroy() {
     super.willDestroy(...arguments);
     document.removeEventListener("selectionchange", this.selectionChanged);
@@ -81,8 +71,8 @@ export default class AiHelperContextMenu extends Component {
     this._menuState = newState;
   }
 
-  async loadPrompts() {
-    let prompts = await ajax("/discourse-ai/ai-helper/prompts");
+  get helperOptions() {
+    let prompts = this.currentUser?.ai_helper_prompts;
 
     prompts = prompts
       .filter((p) => p.location.includes("composer"))
@@ -109,7 +99,7 @@ export default class AiHelperContextMenu extends Component {
       memo[p.name] = p.prompt_type;
       return memo;
     }, {});
-    this.helperOptions = prompts;
+    return prompts;
   }
 
   @bind
@@ -244,12 +234,7 @@ export default class AiHelperContextMenu extends Component {
   }
 
   _showUserCustomPrompts() {
-    const allowedGroups =
-      this.siteSettings?.ai_helper_custom_prompts_allowed_groups
-        .split("|")
-        .map((id) => parseInt(id, 10));
-
-    return this.currentUser?.groups.some((g) => allowedGroups.includes(g.id));
+    return this.currentUser?.can_use_custom_prompts;
   }
 
   handleBoundaries() {
@@ -338,10 +323,6 @@ export default class AiHelperContextMenu extends Component {
 
   @action
   toggleAiHelperOptions() {
-    // Fetch prompts only if it hasn't been fetched yet
-    if (this.helperOptions.length === 0) {
-      this.loadPrompts();
-    }
     this.menuState = this.CONTEXT_MENU_STATES.options;
   }
 
